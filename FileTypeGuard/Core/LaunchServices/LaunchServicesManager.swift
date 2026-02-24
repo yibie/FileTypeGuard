@@ -226,4 +226,67 @@ final class LaunchServicesManager {
 
         return Array(bundleIDs)
     }
+
+    // MARK: - URL Scheme Methods
+
+    /// 获取指定 URL Scheme 的默认处理应用
+    /// - Parameter scheme: URL Scheme 字符串，如 "https"、"mailto"
+    /// - Returns: 默认应用的 Bundle ID
+    /// - Throws: LSError 如果获取失败
+    func getDefaultHandlerForURLScheme(_ scheme: String) throws -> String? {
+        guard !scheme.isEmpty else {
+            throw LSError.invalidUTI
+        }
+
+        let schemeCF = scheme as CFString
+
+        guard let bundleID = LSCopyDefaultHandlerForURLScheme(schemeCF)?.takeRetainedValue() as String? else {
+            return nil
+        }
+
+        return bundleID
+    }
+
+    /// 设置指定 URL Scheme 的默认处理应用
+    /// - Parameters:
+    ///   - bundleID: 应用的 Bundle ID
+    ///   - scheme: URL Scheme 字符串
+    /// - Throws: LSError 如果设置失败
+    func setDefaultHandlerForURLScheme(_ bundleID: String, scheme: String) throws {
+        guard !scheme.isEmpty, !bundleID.isEmpty else {
+            throw LSError.invalidUTI
+        }
+
+        let bundleIDCF = bundleID as CFString
+        let schemeCF = scheme as CFString
+
+        let status = LSSetDefaultHandlerForURLScheme(schemeCF, bundleIDCF)
+
+        guard status == noErr else {
+            throw LSError.setFailed(status)
+        }
+
+        // 验证设置是否成功
+        let currentApp = try getDefaultHandlerForURLScheme(scheme)
+        guard currentApp == bundleID else {
+            throw LSError.setFailed(-1)
+        }
+    }
+
+    /// 获取可以处理指定 URL Scheme 的所有应用
+    /// - Parameter scheme: URL Scheme 字符串
+    /// - Returns: 应用 Bundle ID 数组
+    func getAvailableHandlersForURLScheme(_ scheme: String) -> [String] {
+        guard !scheme.isEmpty else {
+            return []
+        }
+
+        let schemeCF = scheme as CFString
+
+        guard let apps = LSCopyAllHandlersForURLScheme(schemeCF)?.takeRetainedValue() as? [String] else {
+            return []
+        }
+
+        return apps
+    }
 }

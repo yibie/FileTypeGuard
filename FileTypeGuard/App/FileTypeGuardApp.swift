@@ -104,7 +104,7 @@ final class AppCoordinator: ObservableObject {
 
             // 获取显示名称
             Task { @MainActor in
-                if let rule = ConfigurationManager.shared.getProtectionRules().first(where: { $0.fileType.uti == uti }) {
+                if let rule = ConfigurationManager.shared.getProtectionRules().first(where: { $0.target.lookupKey == uti }) {
                     let oldAppInfo = Application.from(bundleID: oldApp)
                     let newAppInfo = Application.from(bundleID: newApp)
 
@@ -112,7 +112,7 @@ final class AppCoordinator: ObservableObject {
                     if ConfigurationManager.shared.getPreferences().showNotifications {
                         self.notificationService.send(.associationRestored(
                             fileType: uti,
-                            fileTypeName: rule.fileType.displayName,
+                            fileTypeName: rule.target.displayName,
                             fromApp: oldAppInfo?.name ?? oldApp,
                             toApp: newAppInfo?.name ?? newApp
                         ))
@@ -130,12 +130,12 @@ final class AppCoordinator: ObservableObject {
 
             // 获取显示名称
             Task { @MainActor in
-                if let rule = ConfigurationManager.shared.getProtectionRules().first(where: { $0.fileType.uti == uti }) {
+                if let rule = ConfigurationManager.shared.getProtectionRules().first(where: { $0.target.lookupKey == uti }) {
                     // 发送失败通知
                     if ConfigurationManager.shared.getPreferences().showNotifications {
                         self.notificationService.send(.recoveryFailed(
                             fileType: uti,
-                            fileTypeName: rule.fileType.displayName,
+                            fileTypeName: rule.target.displayName,
                             error: error.localizedDescription
                         ))
                     }

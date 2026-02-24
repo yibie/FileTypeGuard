@@ -1,12 +1,12 @@
 import SwiftUI
 
 /// 应用选择器组件
-/// 显示本机所有已安装应用，推荐应用（能打开该文件类型的）排在前面
+/// 显示本机所有已安装应用，推荐应用（能打开该文件类型/URL Scheme 的）排在前面
 struct ApplicationPicker: View {
 
     // MARK: - Properties
 
-    let fileType: FileType?
+    let target: ProtectableTarget?
     @Binding var selectedApplication: Application?
 
     // MARK: - State
@@ -15,7 +15,7 @@ struct ApplicationPicker: View {
     @State private var otherApps: [Application] = []
     @State private var isLoading = false
     @State private var searchText = ""
-    @State private var loadedUTI: String = ""
+    @State private var loadedKey: String = ""
 
     // MARK: - Body
 
@@ -52,18 +52,18 @@ struct ApplicationPicker: View {
         .onAppear {
             loadIfNeeded()
         }
-        .onChange(of: fileType?.uti) { _ in
+        .onChange(of: target?.lookupKey) { _ in
             loadIfNeeded()
         }
     }
 
     // MARK: - Load Guard
 
-    /// 只在 UTI 真正变化时才重新加载
+    /// 只在目标真正变化时才重新加载
     private func loadIfNeeded() {
-        let currentUTI = fileType?.uti ?? ""
-        guard currentUTI != loadedUTI else { return }
-        loadedUTI = currentUTI
+        let currentKey = target?.lookupKey ?? ""
+        guard currentKey != loadedKey else { return }
+        loadedKey = currentKey
         loadAllApplications()
     }
 
@@ -228,10 +228,15 @@ struct ApplicationPicker: View {
         Task {
             let lsm = LaunchServicesManager.shared
 
-            // 获取推荐应用（能打开此文件类型的）
+            // 获取推荐应用（能处理此目标的）
             var recommendedBundleIDs = Set<String>()
-            if let ft = fileType {
-                recommendedBundleIDs = Set(lsm.getAvailableApplications(for: ft.uti))
+            if let t = target {
+                switch t {
+                case .fileType(let ft):
+                    recommendedBundleIDs = Set(lsm.getAvailableApplications(for: ft.uti))
+                case .urlScheme(let scheme):
+                    recommendedBundleIDs = Set(lsm.getAvailableHandlersForURLScheme(scheme.scheme))
+                }
             }
 
             // 获取所有已安装应用
@@ -269,12 +274,20 @@ struct ApplicationPicker: View {
                 isLoading = false
 
                 // 只在没有选中应用时，自动选中当前默认应用
-                if selectedApplication == nil,
-                   let ft = fileType,
-                   let defaultBundleID = try? lsm.getDefaultApplication(for: ft.uti) {
-                    let all = recommended + other
-                    if let defaultApp = all.first(where: { $0.bundleID == defaultBundleID }) {
-                        selectedApplication = defaultApp
+                if selectedApplication == nil, let t = target {
+                    let defaultBundleID: String?
+                    switch t {
+                    case .fileType(let ft):
+                        defaultBundleID = try? lsm.getDefaultApplication(for: ft.uti)
+                    case .urlScheme(let scheme):
+                        defaultBundleID = try? lsm.getDefaultHandlerForURLScheme(scheme.scheme)
+                    }
+
+                    if let defaultBundleID = defaultBundleID {
+                        let all = recommended + other
+                        if let defaultApp = all.first(where: { $0.bundleID == defaultBundleID }) {
+                            selectedApplication = defaultApp
+                        }
                     }
                 }
 
@@ -289,11 +302,11 @@ struct ApplicationPicker: View {
 #Preview {
     VStack {
         ApplicationPicker(
-            fileType: FileType(
+            target: .fileType(FileType(
                 uti: "com.adobe.pdf",
                 extensions: [".pdf"],
                 displayName: "PDF Document"
-            ),
+            )),
             selectedApplication: .constant(nil)
         )
     }

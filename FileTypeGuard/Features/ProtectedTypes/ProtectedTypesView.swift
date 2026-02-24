@@ -126,10 +126,10 @@ struct RuleRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // 文件类型图标
-            Image(systemName: "doc.fill")
+            // 图标：文件类型用 doc.fill，URL Scheme 用 link
+            Image(systemName: rule.target.isURLScheme ? "link" : "doc.fill")
                 .font(.title2)
-                .foregroundStyle(rule.isEnabled ? .blue : .secondary)
+                .foregroundStyle(rule.isEnabled ? (rule.target.isURLScheme ? .purple : .blue) : .secondary)
                 .frame(width: 32)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -138,8 +138,8 @@ struct RuleRow: View {
                     .font(.body)
                     .fontWeight(.medium)
 
-                // 文件扩展名
-                Text(rule.fileType.extensionsString)
+                // 副标题：文件扩展名或 scheme://
+                Text(ruleSubtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -177,6 +177,15 @@ struct RuleRow: View {
             }
         }
         .padding(.vertical, 8)
+    }
+
+    private var ruleSubtitle: String {
+        switch rule.target {
+        case .fileType(let ft):
+            return ft.extensionsString
+        case .urlScheme(let scheme):
+            return scheme.schemeString
+        }
     }
 }
 

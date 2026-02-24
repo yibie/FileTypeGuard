@@ -1,6 +1,19 @@
 import SwiftUI
 
-/// 可视化文件类型选择器
+/// 保护目标选择模式
+enum PickerMode: String, CaseIterable {
+    case fileTypes
+    case urlSchemes
+
+    var displayName: String {
+        switch self {
+        case .fileTypes: return String(localized: "file_types")
+        case .urlSchemes: return String(localized: "url_schemes")
+        }
+    }
+}
+
+/// 可视化文件类型/URL Scheme 选择器
 struct FileTypePickerView: View {
 
     // MARK: - Binding
@@ -10,16 +23,23 @@ struct FileTypePickerView: View {
     // MARK: - State
 
     @StateObject private var viewModel = AddTypeViewModel()
+    @State private var pickerMode: PickerMode = .fileTypes
     @State private var selectedCategory: CommonFileTypes.Category = .documents
+    @State private var selectedSchemeCategory: CommonURLSchemes.Category = .web
     @State private var selectedPresetType: CommonFileTypes.PresetFileType?
+    @State private var selectedPresetScheme: CommonURLSchemes.PresetURLScheme?
     @State private var selectedApplication: Application?
     @State private var customExtension = ""
+    @State private var customScheme = ""
     @State private var showCustomInput = false
+    @State private var showCustomSchemeInput = false
     @State private var showingError = false
     @State private var errorMessage = ""
     @FocusState private var isCustomInputFocused: Bool
+    @FocusState private var isCustomSchemeInputFocused: Bool
 
     private let typesByCategory = CommonFileTypes.typesByCategory()
+    private let schemesByCategory = CommonURLSchemes.schemesByCategory()
 
     // MARK: - Body
 
@@ -31,7 +51,7 @@ struct FileTypePickerView: View {
             Divider()
 
             HStack(spacing: 0) {
-                // 左侧：分类 + 文件类型列表
+                // 左侧：分类 + 列表
                 leftPanel
 
                 Divider()
@@ -63,6 +83,27 @@ struct FileTypePickerView: View {
 
             Spacer()
 
+            // 模式切换
+            Picker("", selection: $pickerMode) {
+                ForEach(PickerMode.allCases, id: \.self) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 240)
+            .onChange(of: pickerMode) { _ in
+                // 切换模式时清除选择
+                selectedPresetType = nil
+                selectedPresetScheme = nil
+                selectedApplication = nil
+                showCustomInput = false
+                showCustomSchemeInput = false
+                customExtension = ""
+                customScheme = ""
+            }
+
+            Spacer()
+
             Button {
                 isPresented = false
             } label: {
@@ -79,24 +120,40 @@ struct FileTypePickerView: View {
 
     private var leftPanel: some View {
         VStack(spacing: 0) {
-            // 分类标签
-            categoryTabs
+            if pickerMode == .fileTypes {
+                // 文件类型分类标签
+                categoryTabs
 
-            Divider()
-
-            // 文件类型网格
-            fileTypeGrid
-
-            // 自定义输入选项
-            if showCustomInput {
                 Divider()
-                customInputSection
+
+                // 文件类型网格
+                fileTypeGrid
+
+                // 自定义输入选项
+                if showCustomInput {
+                    Divider()
+                    customInputSection
+                }
+            } else {
+                // URL Scheme 分类标签
+                schemeCategoryTabs
+
+                Divider()
+
+                // URL Scheme 网格
+                urlSchemeGrid
+
+                // 自定义 Scheme 输入
+                if showCustomSchemeInput {
+                    Divider()
+                    customSchemeInputSection
+                }
             }
         }
         .frame(width: 450)
     }
 
-    // MARK: - Category Tabs
+    // MARK: - Category Tabs (File Types)
 
     private var categoryTabs: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -116,6 +173,36 @@ struct FileTypePickerView: View {
                         .padding(.vertical, 6)
                         .background(selectedCategory == category ? Color.accentColor : Color.clear)
                         .foregroundStyle(selectedCategory == category ? .white : .primary)
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+        }
+    }
+
+    // MARK: - Scheme Category Tabs
+
+    private var schemeCategoryTabs: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(CommonURLSchemes.Category.allCases) { category in
+                    Button {
+                        selectedSchemeCategory = category
+                        selectedPresetScheme = nil
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: category.icon)
+                            Text(category.displayName)
+                        }
+                        .font(.subheadline)
+                        .fontWeight(selectedSchemeCategory == category ? .semibold : .regular)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(selectedSchemeCategory == category ? Color.accentColor : Color.clear)
+                        .foregroundStyle(selectedSchemeCategory == category ? .white : .primary)
                         .cornerRadius(6)
                     }
                     .buttonStyle(.plain)
@@ -162,6 +249,41 @@ struct FileTypePickerView: View {
         }
     }
 
+    // MARK: - URL Scheme Grid
+
+    private var urlSchemeGrid: some View {
+        ScrollView {
+            LazyVGrid(columns: [
+                GridItem(.flexible()),
+                GridItem(.flexible())
+            ], spacing: 12) {
+                ForEach(schemesByCategory[selectedSchemeCategory] ?? []) { presetScheme in
+                    URLSchemeCard(
+                        presetScheme: presetScheme,
+                        isSelected: selectedPresetScheme?.id == presetScheme.id
+                    )
+                    .onTapGesture {
+                        selectedPresetScheme = presetScheme
+                        showCustomSchemeInput = false
+                        selectedApplication = nil
+                    }
+                }
+
+                // 自定义 Scheme 卡片
+                CustomSchemeCard(isActive: showCustomSchemeInput)
+                    .onTapGesture {
+                        showCustomSchemeInput = true
+                        selectedPresetScheme = nil
+                        selectedApplication = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            isCustomSchemeInputFocused = true
+                        }
+                    }
+            }
+            .padding()
+        }
+    }
+
     // MARK: - Custom Input Section
 
     private var customInputSection: some View {
@@ -184,23 +306,56 @@ struct FileTypePickerView: View {
         }
     }
 
+    // MARK: - Custom Scheme Input Section
+
+    private var customSchemeInputSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("custom_scheme")
+                .font(.headline)
+
+            TextField(String(localized: "enter_scheme"), text: $customScheme)
+                .textFieldStyle(.roundedBorder)
+                .frame(height: 24)
+                .focused($isCustomSchemeInputFocused)
+        }
+        .padding()
+        .background(Color(nsColor: .controlBackgroundColor))
+        .allowsHitTesting(true)
+        .onAppear {
+            if showCustomSchemeInput {
+                isCustomSchemeInputFocused = true
+            }
+        }
+    }
+
     // MARK: - Right Panel
 
     private var rightPanel: some View {
         VStack(alignment: .leading, spacing: 16) {
-            // 选中的文件类型信息
-            if let presetType = selectedPresetType {
-                selectedTypeInfo(presetType)
-            } else if showCustomInput && !customExtension.isEmpty {
-                customTypeInfo
+            if pickerMode == .fileTypes {
+                // 文件类型模式
+                if let presetType = selectedPresetType {
+                    selectedTypeInfo(presetType)
+                } else if showCustomInput && !customExtension.isEmpty {
+                    customTypeInfo
+                } else {
+                    emptySelection
+                }
             } else {
-                emptySelection
+                // URL Scheme 模式
+                if let presetScheme = selectedPresetScheme {
+                    selectedSchemeInfo(presetScheme)
+                } else if showCustomSchemeInput && !customScheme.isEmpty {
+                    customSchemeInfo
+                } else {
+                    emptySelection
+                }
             }
 
             Divider()
 
             // 应用选择器
-            if selectedPresetType != nil || (showCustomInput && !customExtension.isEmpty) {
+            if currentTarget != nil {
                 applicationPickerSection
             }
         }
@@ -242,6 +397,32 @@ struct FileTypePickerView: View {
         .cornerRadius(8)
     }
 
+    // MARK: - Selected Scheme Info
+
+    private func selectedSchemeInfo(_ presetScheme: CommonURLSchemes.PresetURLScheme) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: presetScheme.icon)
+                    .font(.largeTitle)
+                    .foregroundStyle(.purple)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(presetScheme.displayName)
+                        .font(.title3)
+                        .fontWeight(.semibold)
+
+                    Text("\(presetScheme.scheme)://")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.purple.opacity(0.05))
+        .cornerRadius(8)
+    }
+
     private var customTypeInfo: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -266,13 +447,37 @@ struct FileTypePickerView: View {
         .cornerRadius(8)
     }
 
+    private var customSchemeInfo: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "link.badge.plus")
+                    .font(.largeTitle)
+                    .foregroundStyle(.orange)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("custom_scheme")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+
+                    Text("\(customScheme)://")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.05))
+        .cornerRadius(8)
+    }
+
     private var emptySelection: some View {
         VStack(spacing: 12) {
             Image(systemName: "hand.tap.fill")
                 .font(.system(size: 40))
                 .foregroundStyle(.secondary)
 
-            Text("select_file_type")
+            Text(pickerMode == .fileTypes ? "select_file_type" : "select_url_scheme")
                 .font(.headline)
                 .foregroundStyle(.secondary)
 
@@ -290,9 +495,9 @@ struct FileTypePickerView: View {
             Text("select_default_app")
                 .font(.headline)
 
-            if let fileType = currentFileType {
+            if let target = currentTarget {
                 ApplicationPicker(
-                    fileType: fileType,
+                    target: target,
                     selectedApplication: $selectedApplication
                 )
             } else {
@@ -327,44 +532,59 @@ struct FileTypePickerView: View {
 
     // MARK: - Computed Properties
 
-    private var currentFileType: FileType? {
-        if let presetType = selectedPresetType {
-            return presetType.toFileType()
-        } else if showCustomInput && !customExtension.isEmpty {
-            return FileType.from(extension: customExtension)
+    private var currentTarget: ProtectableTarget? {
+        if pickerMode == .fileTypes {
+            if let presetType = selectedPresetType {
+                return .fileType(presetType.toFileType())
+            } else if showCustomInput && !customExtension.isEmpty {
+                if let ft = FileType.from(extension: customExtension) {
+                    return .fileType(ft)
+                }
+            }
+        } else {
+            if let presetScheme = selectedPresetScheme {
+                return .urlScheme(presetScheme.toURLScheme())
+            } else if showCustomSchemeInput && !customScheme.isEmpty {
+                return .urlScheme(URLScheme(scheme: customScheme, displayName: customScheme.uppercased()))
+            }
         }
         return nil
     }
 
     private var canAddRule: Bool {
-        currentFileType != nil && selectedApplication != nil
+        currentTarget != nil && selectedApplication != nil
     }
 
     // MARK: - Actions
 
     private func addProtectionRule() {
-        guard let fileType = currentFileType,
+        guard let target = currentTarget,
               let app = selectedApplication else {
             return
         }
 
         do {
             let rule = ProtectionRule(
-                fileType: fileType,
+                target: target,
                 expectedApplication: app
             )
 
             try ConfigurationManager.shared.addProtectionRule(rule)
 
-            // 立即设置默认应用（覆盖所有相关 UTI，包括动态 UTI）
-            if let ext = fileType.extensions.first {
-                try LaunchServicesManager.shared.setDefaultApplicationForExtension(
-                    app.bundleID,
-                    extension: ext,
-                    primaryUTI: fileType.uti
-                )
-            } else {
-                try LaunchServicesManager.shared.setDefaultApplication(app.bundleID, for: fileType.uti)
+            // 立即设置默认应用
+            switch target {
+            case .fileType(let fileType):
+                if let ext = fileType.extensions.first {
+                    try LaunchServicesManager.shared.setDefaultApplicationForExtension(
+                        app.bundleID,
+                        extension: ext,
+                        primaryUTI: fileType.uti
+                    )
+                } else {
+                    try LaunchServicesManager.shared.setDefaultApplication(app.bundleID, for: fileType.uti)
+                }
+            case .urlScheme(let scheme):
+                try LaunchServicesManager.shared.setDefaultHandlerForURLScheme(app.bundleID, scheme: scheme.scheme)
             }
 
             print("✅ 成功添加保护规则: \(rule.displayName)")
@@ -412,6 +632,41 @@ struct FileTypeCard: View {
     }
 }
 
+// MARK: - URL Scheme Card
+
+struct URLSchemeCard: View {
+    let presetScheme: CommonURLSchemes.PresetURLScheme
+    let isSelected: Bool
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: presetScheme.icon)
+                .font(.title)
+                .foregroundStyle(isSelected ? .white : .purple)
+
+            Text(presetScheme.displayName)
+                .font(.subheadline)
+                .fontWeight(isSelected ? .semibold : .regular)
+                .foregroundStyle(isSelected ? .white : .primary)
+                .multilineTextAlignment(.center)
+
+            Text("\(presetScheme.scheme)://")
+                .font(.caption2)
+                .foregroundStyle(isSelected ? .white.opacity(0.8) : .secondary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .padding(.horizontal, 8)
+        .background(isSelected ? Color.accentColor : Color(nsColor: .controlBackgroundColor))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isSelected ? Color.clear : Color.gray.opacity(0.2), lineWidth: 1)
+        )
+    }
+}
+
 // MARK: - Custom Type Card
 
 struct CustomTypeCard: View {
@@ -429,6 +684,38 @@ struct CustomTypeCard: View {
                 .foregroundStyle(isActive ? .white : .primary)
 
             Text("enter_extension")
+                .font(.caption2)
+                .foregroundStyle(isActive ? .white.opacity(0.8) : .secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .padding(.horizontal, 8)
+        .background(isActive ? Color.orange : Color(nsColor: .controlBackgroundColor))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isActive ? Color.clear : Color.gray.opacity(0.2), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - Custom Scheme Card
+
+struct CustomSchemeCard: View {
+    let isActive: Bool
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "plus.circle.fill")
+                .font(.title)
+                .foregroundStyle(isActive ? .white : .orange)
+
+            Text("custom_scheme")
+                .font(.subheadline)
+                .fontWeight(isActive ? .semibold : .regular)
+                .foregroundStyle(isActive ? .white : .primary)
+
+            Text("enter_scheme")
                 .font(.caption2)
                 .foregroundStyle(isActive ? .white.opacity(0.8) : .secondary)
         }

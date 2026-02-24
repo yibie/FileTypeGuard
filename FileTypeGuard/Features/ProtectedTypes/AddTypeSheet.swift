@@ -141,7 +141,7 @@ struct AddTypeSheet: View {
                 .font(.headline)
 
             ApplicationPicker(
-                fileType: viewModel.fileType,
+                target: viewModel.fileType.map { .fileType($0) },
                 selectedApplication: $selectedApplication
             )
         }

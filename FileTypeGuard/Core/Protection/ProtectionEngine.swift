@@ -10,17 +10,17 @@ final class ProtectionEngine {
     private let configManager = ConfigurationManager.shared
     private let lsManager = LaunchServicesManager.shared
     private let logger = EventLogger.shared
-    private var recoveryTasks: [String: DispatchWorkItem] = [:]  // UTI -> 恢复任务
+    private var recoveryTasks: [String: DispatchWorkItem] = [:]  // lookupKey -> 恢复任务
     private let queue = DispatchQueue(label: "com.filetypeprotector.protection", qos: .userInitiated)
 
     /// 最大重试次数
     private let maxRetries = 3
 
     /// 恢复成功回调
-    var onRecoverySuccess: ((String, String, String) -> Void)?  // (uti, oldApp, newApp)
+    var onRecoverySuccess: ((String, String, String) -> Void)?  // (lookupKey, oldApp, newApp)
 
     /// 恢复失败回调
-    var onRecoveryFailure: ((String, Error) -> Void)?  // (uti, error)
+    var onRecoveryFailure: ((String, Error) -> Void)?  // (lookupKey, error)
 
     // MARK: - Error Types
 
@@ -63,6 +63,23 @@ final class ProtectionEngine {
         }
     }
 
+    /// 验证并恢复指定 URL Scheme 的关联
+    /// - Parameter scheme: URL Scheme 字符串
+    func validateAndRecoverURLScheme(scheme: String) {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+
+            do {
+                try self._validateAndRecoverURLScheme(scheme: scheme)
+            } catch {
+                print("❌ URL Scheme 验证和恢复失败: \(error)")
+                DispatchQueue.main.async {
+                    self.onRecoveryFailure?(scheme, error)
+                }
+            }
+        }
+    }
+
     /// 验证所有保护规则
     func validateAllRules() {
         let rules = configManager.getProtectionRules()
@@ -72,21 +89,27 @@ final class ProtectionEngine {
             guard rule.isEnabled else {
                 continue
             }
-            validateAndRecover(uti: rule.fileType.uti)
+
+            switch rule.target {
+            case .fileType(let ft):
+                validateAndRecover(uti: ft.uti)
+            case .urlScheme(let scheme):
+                validateAndRecoverURLScheme(scheme: scheme.scheme)
+            }
         }
     }
 
-    /// 取消指定 UTI 的待执行恢复任务
-    /// - Parameter uti: 文件类型的 UTI
-    func cancelRecovery(uti: String) {
+    /// 取消指定键的待执行恢复任务
+    /// - Parameter key: UTI 或 URL Scheme
+    func cancelRecovery(uti key: String) {
         queue.async { [weak self] in
-            self?.recoveryTasks[uti]?.cancel()
-            self?.recoveryTasks.removeValue(forKey: uti)
-            print("🚫 已取消 \(uti) 的恢复任务")
+            self?.recoveryTasks[key]?.cancel()
+            self?.recoveryTasks.removeValue(forKey: key)
+            print("🚫 已取消 \(key) 的恢复任务")
         }
     }
 
-    // MARK: - Private Methods
+    // MARK: - Private Methods (File Type)
 
     /// 内部验证和恢复方法（在队列中执行）
     private func _validateAndRecover(uti: String) throws {
@@ -107,7 +130,7 @@ final class ProtectionEngine {
         var needsRecovery = (currentBundleID != expectedBundleID)
 
         // 4. 检查所有动态 UTI 是否也被修改
-        if let ext = rule.fileType.extensions.first {
+        if let ft = rule.fileType, let ext = ft.extensions.first {
             let allUTIs = lsManager.findAllUTIs(forExtension: ext)
             for dynUTI in allUTIs {
                 if dynUTI == uti { continue }
@@ -132,7 +155,7 @@ final class ProtectionEngine {
         let currentApp = currentBundleID.flatMap { Application.from(bundleID: $0) }
         logger.logDetected(
             fileType: uti,
-            fileTypeName: rule.fileType.displayName,
+            fileTypeName: rule.fileType?.displayName ?? uti,
             fromApp: currentBundleID,
             fromAppName: currentApp?.name,
             toApp: expectedBundleID,
@@ -153,7 +176,8 @@ final class ProtectionEngine {
 
         case .delayed:
             scheduleDelayedRecovery(
-                uti: uti,
+                key: uti,
+                isURLScheme: false,
                 expectedBundleID: expectedBundleID,
                 currentBundleID: currentBundleID,
                 delay: strategy.delaySeconds
@@ -196,7 +220,7 @@ final class ProtectionEngine {
                     let currentApp = currentBundleID.flatMap { Application.from(bundleID: $0) }
                     logger.logRestored(
                         fileType: uti,
-                        fileTypeName: rule.fileType.displayName,
+                        fileTypeName: rule.fileType?.displayName ?? uti,
                         fromApp: currentBundleID,
                         fromAppName: currentApp?.name,
                         toApp: expectedBundleID,
@@ -219,7 +243,7 @@ final class ProtectionEngine {
                 let currentApp = currentBundleID.flatMap { Application.from(bundleID: $0) }
                 logger.logRestoreFailed(
                     fileType: uti,
-                    fileTypeName: rule.fileType.displayName,
+                    fileTypeName: rule.fileType?.displayName ?? uti,
                     fromApp: currentBundleID,
                     fromAppName: currentApp?.name,
                     toApp: expectedBundleID,
@@ -246,48 +270,196 @@ final class ProtectionEngine {
         }
     }
 
-    /// 计划延迟恢复
+    // MARK: - Private Methods (URL Scheme)
+
+    /// 内部 URL Scheme 验证和恢复方法
+    private func _validateAndRecoverURLScheme(scheme: String) throws {
+        guard let rule = findSchemeRule(for: scheme) else {
+            throw ProtectionError.ruleNotFound
+        }
+
+        guard rule.isEnabled else {
+            throw ProtectionError.ruleDisabled
+        }
+
+        let currentBundleID = try lsManager.getDefaultHandlerForURLScheme(scheme)
+        let expectedBundleID = rule.expectedApplication.bundleID
+
+        guard currentBundleID != expectedBundleID else {
+            print("✅ \(scheme):// 的 URL Scheme 关联正常: \(expectedBundleID)")
+            return
+        }
+
+        print("⚠️  检测到 \(scheme):// 的 URL Scheme 关联被修改:")
+        print("   期望: \(expectedBundleID)")
+        print("   当前: \(currentBundleID ?? "nil")")
+
+        let schemeName = rule.urlScheme?.displayName ?? scheme
+        let currentApp = currentBundleID.flatMap { Application.from(bundleID: $0) }
+        logger.logDetected(
+            fileType: scheme,
+            fileTypeName: schemeName,
+            fromApp: currentBundleID,
+            fromAppName: currentApp?.name,
+            toApp: expectedBundleID,
+            toAppName: rule.expectedApplication.name
+        )
+
+        let preferences = configManager.getPreferences()
+        let strategy = preferences.recoveryStrategy
+
+        switch strategy {
+        case .immediate:
+            try performURLSchemeRecovery(
+                scheme: scheme,
+                expectedBundleID: expectedBundleID,
+                currentBundleID: currentBundleID
+            )
+
+        case .delayed:
+            scheduleDelayedRecovery(
+                key: scheme,
+                isURLScheme: true,
+                expectedBundleID: expectedBundleID,
+                currentBundleID: currentBundleID,
+                delay: strategy.delaySeconds
+            )
+
+        case .askUser:
+            print("⏸️  询问用户模式暂未实现，跳过恢复")
+        }
+    }
+
+    /// 执行 URL Scheme 恢复操作（带重试）
+    private func performURLSchemeRecovery(
+        scheme: String,
+        expectedBundleID: String,
+        currentBundleID: String?,
+        retryCount: Int = 0
+    ) throws {
+        do {
+            try lsManager.setDefaultHandlerForURLScheme(expectedBundleID, scheme: scheme)
+
+            // 验证是否成功
+            let verifiedBundleID = try lsManager.getDefaultHandlerForURLScheme(scheme)
+
+            if verifiedBundleID == expectedBundleID {
+                print("✅ 成功恢复 \(scheme):// 的 URL Scheme 关联: \(expectedBundleID)")
+
+                if let rule = findSchemeRule(for: scheme) {
+                    let schemeName = rule.urlScheme?.displayName ?? scheme
+                    let currentApp = currentBundleID.flatMap { Application.from(bundleID: $0) }
+                    logger.logRestored(
+                        fileType: scheme,
+                        fileTypeName: schemeName,
+                        fromApp: currentBundleID,
+                        fromAppName: currentApp?.name,
+                        toApp: expectedBundleID,
+                        toAppName: rule.expectedApplication.name
+                    )
+                }
+
+                DispatchQueue.main.async {
+                    self.onRecoverySuccess?(scheme, currentBundleID ?? "unknown", expectedBundleID)
+                }
+            } else {
+                throw ProtectionError.recoveryFailed("验证失败，当前值: \(verifiedBundleID ?? "nil")")
+            }
+
+        } catch {
+            print("❌ URL Scheme 恢复失败 (\(retryCount + 1)/\(maxRetries)): \(error)")
+
+            if retryCount == maxRetries - 1, let rule = findSchemeRule(for: scheme) {
+                let schemeName = rule.urlScheme?.displayName ?? scheme
+                let currentApp = currentBundleID.flatMap { Application.from(bundleID: $0) }
+                logger.logRestoreFailed(
+                    fileType: scheme,
+                    fileTypeName: schemeName,
+                    fromApp: currentBundleID,
+                    fromAppName: currentApp?.name,
+                    toApp: expectedBundleID,
+                    toAppName: rule.expectedApplication.name,
+                    error: error
+                )
+            }
+
+            if retryCount < maxRetries - 1 {
+                let retryDelay: TimeInterval = 1.0 * Double(retryCount + 1)
+                print("⏳ 将在 \(retryDelay) 秒后重试...")
+
+                Thread.sleep(forTimeInterval: retryDelay)
+                try performURLSchemeRecovery(
+                    scheme: scheme,
+                    expectedBundleID: expectedBundleID,
+                    currentBundleID: currentBundleID,
+                    retryCount: retryCount + 1
+                )
+            } else {
+                throw ProtectionError.maxRetriesExceeded
+            }
+        }
+    }
+
+    // MARK: - Shared Private Methods
+
+    /// 计划延迟恢复（通用）
     private func scheduleDelayedRecovery(
-        uti: String,
+        key: String,
+        isURLScheme: Bool,
         expectedBundleID: String,
         currentBundleID: String?,
         delay: TimeInterval
     ) {
         // 取消现有任务
-        recoveryTasks[uti]?.cancel()
+        recoveryTasks[key]?.cancel()
 
         // 创建新任务
         let task = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
 
             do {
-                print("⏰ 延迟恢复任务开始: \(uti)")
-                try self.performRecovery(
-                    uti: uti,
-                    expectedBundleID: expectedBundleID,
-                    currentBundleID: currentBundleID
-                )
+                if isURLScheme {
+                    print("⏰ 延迟恢复任务开始: \(key)://")
+                    try self.performURLSchemeRecovery(
+                        scheme: key,
+                        expectedBundleID: expectedBundleID,
+                        currentBundleID: currentBundleID
+                    )
+                } else {
+                    print("⏰ 延迟恢复任务开始: \(key)")
+                    try self.performRecovery(
+                        uti: key,
+                        expectedBundleID: expectedBundleID,
+                        currentBundleID: currentBundleID
+                    )
+                }
             } catch {
                 print("❌ 延迟恢复失败: \(error)")
                 DispatchQueue.main.async {
-                    self.onRecoveryFailure?(uti, error)
+                    self.onRecoveryFailure?(key, error)
                 }
             }
 
             // 清理任务
-            self.recoveryTasks.removeValue(forKey: uti)
+            self.recoveryTasks.removeValue(forKey: key)
         }
 
-        recoveryTasks[uti] = task
+        recoveryTasks[key] = task
         queue.asyncAfter(deadline: .now() + delay, execute: task)
 
-        print("⏳ 已计划在 \(delay) 秒后恢复 \(uti)")
+        print("⏳ 已计划在 \(delay) 秒后恢复 \(key)")
     }
 
     /// 查找指定 UTI 的保护规则
     private func findRule(for uti: String) -> ProtectionRule? {
         let rules = configManager.getProtectionRules()
-        return rules.first { $0.fileType.uti == uti }
+        return rules.first { $0.target.lookupKey == uti && $0.target.isFileType }
+    }
+
+    /// 查找指定 URL Scheme 的保护规则
+    private func findSchemeRule(for scheme: String) -> ProtectionRule? {
+        let rules = configManager.getProtectionRules()
+        return rules.first { $0.target.lookupKey == scheme && $0.target.isURLScheme }
     }
 
     // MARK: - Smart Strategy Selection

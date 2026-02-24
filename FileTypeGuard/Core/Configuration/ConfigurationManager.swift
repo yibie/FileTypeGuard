@@ -145,11 +145,12 @@ final class ConfigurationManager {
     func addProtectionRule(_ rule: ProtectionRule) throws {
         var config = loadConfiguration()
 
-        // 检查是否已存在相同的 UTI
-        if config.protectedTypes.contains(where: { $0.fileType.uti == rule.fileType.uti }) {
-            print("⚠️  已存在相同 UTI 的保护规则: \(rule.fileType.uti)")
+        // 检查是否已存在相同目标的保护规则
+        let lookupKey = rule.target.lookupKey
+        if config.protectedTypes.contains(where: { $0.target.lookupKey == lookupKey }) {
+            print("⚠️  已存在相同目标的保护规则: \(lookupKey)")
             // 替换现有规则
-            config.protectedTypes.removeAll { $0.fileType.uti == rule.fileType.uti }
+            config.protectedTypes.removeAll { $0.target.lookupKey == lookupKey }
         }
 
         config.protectedTypes.append(rule)
@@ -193,6 +194,16 @@ final class ConfigurationManager {
     /// - Returns: 用户偏好设置
     func getPreferences() -> UserPreferences {
         return loadConfiguration().preferences
+    }
+
+    /// 获取所有文件类型保护规则
+    func getFileTypeRules() -> [ProtectionRule] {
+        return getProtectionRules().filter { $0.target.isFileType }
+    }
+
+    /// 获取所有 URL Scheme 保护规则
+    func getURLSchemeRules() -> [ProtectionRule] {
+        return getProtectionRules().filter { $0.target.isURLScheme }
     }
 
     /// 导出配置到指定路径
