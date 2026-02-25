@@ -1,0 +1,28 @@
+app:
+  name: "FileTypeGuard"
+  bundle_id: "com.filetypeguard.mac"
+  team_id: "26H6NRHWR6"
+  sign_identity: "Developer ID Application: Chan Oliver (26H6NRHWR6)"
+  description: "Locks file type associations and automatically restores them when changed"
+  homepage: "https://github.com/yibie/FileTypeGuard"
+
+xcode:
+  project: "FileTypeGuard.xcodeproj"
+  scheme: "FileTypeGuard"
+  configuration: "Release"
+
+github:
+  owner: "yibie"
+  repo: "FileTypeGuard"
+
+publish:
+  target: "tap"   # "tap" | "pr" | "both"
+  tap:
+    repo: "yibie/homebrew-tap"
+    cask_dir: "Casks"
+
+cask:
+  zap_paths:
+    - "~/Library/Application Support/FileTypeGuard"
+    - "~/Library/Preferences/com.filetypeguard.mac.plist"
+    - "~/Library/Caches/com.filetypeguard.mac"

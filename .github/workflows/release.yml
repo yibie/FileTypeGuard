@@ -1,0 +1,17 @@
+name: Release
+on:
+  push:
+    tags: ['v*.*.*']
+
+jobs:
+  release:
+    uses: yibie/cask-releaser/.github/workflows/release.yml@main
+    with:
+      config-path: cask-releaser.yml
+    secrets:
+      APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
+      APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+      APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
+      APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+      APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+      GH_PAT: ${{ secrets.GH_PAT }}
