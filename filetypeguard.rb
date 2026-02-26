@@ -1,6 +1,6 @@
 cask "filetypeguard" do
-  version "1.2.0"
-  sha256 "cbd3026d28389b057aa54207b390a35c34e857fbb1b850bc2f4621080246c094"
+  version "1.2.1"
+  sha256 "a389dcf8b225c987d6b8f746ab7fdbfbd98255e0d0386a065c8c135b86140a90"
 
   url "https://github.com/yibie/FileTypeGuard/releases/download/v#{version}/FileTypeGuard-#{version}.zip"
   name "FileTypeGuard"
