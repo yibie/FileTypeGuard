@@ -7,7 +7,8 @@ struct ProtectedTypesView: View {
 
     @StateObject private var viewModel = ProtectedTypesViewModel()
     @State private var showingAddSheet = false
-    @State private var selectedRule: ProtectionRule?
+    @State private var showingEditSheet = false
+    @State private var ruleToEdit: ProtectionRule?
 
     // MARK: - Body
 
@@ -28,6 +29,11 @@ struct ProtectedTypesView: View {
         .background(Color(nsColor: .controlBackgroundColor))
         .sheet(isPresented: $showingAddSheet) {
             FileTypePickerView(isPresented: $showingAddSheet)
+        }
+        .sheet(isPresented: $showingEditSheet) {
+            if let rule = ruleToEdit {
+                FileTypePickerView(isPresented: $showingEditSheet, editingRule: rule)
+            }
         }
         .onAppear {
             viewModel.loadRules()
@@ -66,13 +72,13 @@ struct ProtectedTypesView: View {
     // MARK: - Rules List
 
     private var rulesList: some View {
-        List(selection: $selectedRule) {
+        List {
             ForEach(viewModel.protectionRules) { rule in
                 RuleRow(rule: rule)
-                    .tag(rule)
                     .contextMenu {
                         Button(String(localized: "edit")) {
-                            selectedRule = rule
+                            ruleToEdit = rule
+                            showingEditSheet = true
                         }
 
                         Button(rule.isEnabled ? String(localized: "disable") : String(localized: "enable")) {

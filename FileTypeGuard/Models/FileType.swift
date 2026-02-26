@@ -42,18 +42,26 @@ struct FileType: Identifiable, Codable, Hashable {
     // MARK: - Factory Methods
 
     /// 从扩展名创建文件类型
+    /// - Note: 只使用用户指定的扩展名，而不是该 UTI 关联的所有扩展名
     static func from(extension ext: String) -> FileType? {
-        guard let uti = UTIManager.shared.getUTI(forExtension: ext) else {
+        var cleanExt = ext
+        // 确保扩展名以点开头
+        if !cleanExt.hasPrefix(".") {
+            cleanExt = ".\(cleanExt)"
+        }
+
+        guard let uti = UTIManager.shared.getUTI(forExtension: cleanExt) else {
             return nil
         }
 
-        let extensions = UTIManager.shared.getExtensions(forUTI: uti)
         let description = UTIManager.shared.getDescription(forUTI: uti)
 
+        // 只使用用户指定的扩展名，而不是该 UTI 关联的所有扩展名
+        // 这样可以避免添加 .srt 时同时添加 .mp4 的问题
         return FileType(
             uti: uti,
-            extensions: extensions.isEmpty ? [ext] : extensions,
-            displayName: description ?? ext
+            extensions: [cleanExt],
+            displayName: description ?? cleanExt
         )
     }
 

@@ -20,6 +20,11 @@ struct FileTypePickerView: View {
 
     @Binding var isPresented: Bool
 
+    // MARK: - Properties
+
+    /// 可选：要编辑的现有规则。如果为 nil，则是添加新规则
+    var editingRule: ProtectionRule?
+
     // MARK: - State
 
     @StateObject private var viewModel = AddTypeViewModel()
@@ -40,6 +45,13 @@ struct FileTypePickerView: View {
 
     private let typesByCategory = CommonFileTypes.typesByCategory()
     private let schemesByCategory = CommonURLSchemes.schemesByCategory()
+
+    // MARK: - Initialization
+
+    init(isPresented: Binding<Bool>, editingRule: ProtectionRule? = nil) {
+        self._isPresented = isPresented
+        self.editingRule = editingRule
+    }
 
     // MARK: - Body
 
@@ -71,13 +83,56 @@ struct FileTypePickerView: View {
         } message: {
             Text(errorMessage)
         }
+        .onAppear {
+            loadEditingRule()
+        }
+    }
+
+    /// 加载要编辑的规则的现有值
+    private func loadEditingRule() {
+        guard let rule = editingRule else { return }
+
+        // 预选择应用
+        selectedApplication = rule.expectedApplication
+
+        switch rule.target {
+        case .fileType(let fileType):
+            pickerMode = .fileTypes
+
+            // 查找是否匹配预设类型
+            if let preset = CommonFileTypes.allTypes.first(where: { $0.uti == fileType.uti }) {
+                selectedCategory = preset.category
+                selectedPresetType = preset
+            } else if let firstExt = fileType.extensions.first {
+                // 自定义类型
+                showCustomInput = true
+                customExtension = firstExt
+            }
+
+        case .urlScheme(let scheme):
+            pickerMode = .urlSchemes
+
+            // 查找是否匹配预设 scheme
+            if let preset = CommonURLSchemes.allSchemes.first(where: { $0.scheme == scheme.scheme }) {
+                selectedSchemeCategory = preset.category
+                selectedPresetScheme = preset
+            } else {
+                // 自定义 scheme
+                showCustomSchemeInput = true
+                customScheme = scheme.scheme
+            }
+        }
     }
 
     // MARK: - Header
 
+    private var isEditing: Bool {
+        editingRule != nil
+    }
+
     private var header: some View {
         HStack {
-            Text("add_file_type_protection")
+            Text(isEditing ? "edit_protection_rule" : "add_file_type_protection")
                 .font(.title2)
                 .fontWeight(.semibold)
 
@@ -520,7 +575,7 @@ struct FileTypePickerView: View {
             }
             .keyboardShortcut(.cancelAction)
 
-            Button(String(localized: "add_protection")) {
+            Button(String(localized: isEditing ? "save" : "add_protection")) {
                 addProtectionRule()
             }
             .keyboardShortcut(.defaultAction)
@@ -564,12 +619,25 @@ struct FileTypePickerView: View {
         }
 
         do {
-            let rule = ProtectionRule(
-                target: target,
-                expectedApplication: app
-            )
-
-            try ConfigurationManager.shared.addProtectionRule(rule)
+            let rule: ProtectionRule
+            if let existingRule = editingRule {
+                // 编辑模式：保留原有 ID
+                rule = ProtectionRule(
+                    id: existingRule.id,
+                    target: target,
+                    expectedApplication: app,
+                    isEnabled: existingRule.isEnabled,
+                    createdAt: existingRule.createdAt
+                )
+                try ConfigurationManager.shared.updateProtectionRule(rule)
+            } else {
+                // 添加新模式
+                rule = ProtectionRule(
+                    target: target,
+                    expectedApplication: app
+                )
+                try ConfigurationManager.shared.addProtectionRule(rule)
+            }
 
             // 立即设置默认应用
             switch target {
