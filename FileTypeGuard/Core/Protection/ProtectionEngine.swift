@@ -122,40 +122,56 @@ final class ProtectionEngine {
             throw ProtectionError.ruleDisabled
         }
 
-        // 2. 读取当前文件关联（主 UTI）
-        let currentBundleID = try lsManager.getDefaultApplication(for: uti)
         let expectedBundleID = rule.expectedApplication.bundleID
 
-        // 3. 检查主 UTI 是否需要恢复
+        // 2. 以扩展名为起点，动态查询系统当前的所有 UTI
+        // 避免使用规则创建时固化的 UTI（可能因第三方应用安装/卸载而失效）
+        let allCurrentUTIs: [String]
+        let primaryUTI: String
+        if let ext = rule.fileType?.extensions.first {
+            let resolved = lsManager.findAllUTIs(forExtension: ext)
+            if resolved.isEmpty {
+                allCurrentUTIs = [uti]
+                primaryUTI = uti
+            } else {
+                allCurrentUTIs = resolved
+                // 优先使用存储时的 UTI（如果它仍在系统中），否则取第一个
+                primaryUTI = resolved.contains(uti) ? uti : resolved[0]
+            }
+        } else {
+            allCurrentUTIs = [uti]
+            primaryUTI = uti
+        }
+
+        // 3. 检查所有当前 UTI 的默认应用
+        let currentBundleID = try lsManager.getDefaultApplication(for: primaryUTI)
         var needsRecovery = (currentBundleID != expectedBundleID)
 
-        // 4. 检查所有动态 UTI 是否也被修改
-        if let ft = rule.fileType, let ext = ft.extensions.first {
-            let allUTIs = lsManager.findAllUTIs(forExtension: ext)
-            for dynUTI in allUTIs {
-                if dynUTI == uti { continue }
+        if !needsRecovery {
+            for dynUTI in allCurrentUTIs where dynUTI != primaryUTI {
                 let dynApp = try? lsManager.getDefaultApplication(for: dynUTI)
-                if dynApp != nil && dynApp != expectedBundleID {
-                    print("⚠️  动态 UTI \(dynUTI) 被设置为: \(dynApp ?? "nil")，期望: \(expectedBundleID)")
+                if let dynApp, dynApp != expectedBundleID {
+                    print("⚠️  UTI \(dynUTI) 被设置为: \(dynApp)，期望: \(expectedBundleID)")
                     needsRecovery = true
+                    break
                 }
             }
         }
 
         if !needsRecovery {
-            print("✅ \(uti) 的文件关联正常: \(expectedBundleID)")
+            print("✅ \(primaryUTI) 的文件关联正常: \(expectedBundleID)")
             return
         }
 
-        print("⚠️  检测到 \(uti) 的文件关联被修改:")
+        print("⚠️  检测到文件关联被修改 (UTI: \(primaryUTI)):")
         print("   期望: \(expectedBundleID)")
         print("   当前: \(currentBundleID ?? "nil")")
 
         // 记录检测事件
         let currentApp = currentBundleID.flatMap { Application.from(bundleID: $0) }
         logger.logDetected(
-            fileType: uti,
-            fileTypeName: rule.fileType?.displayName ?? uti,
+            fileType: primaryUTI,
+            fileTypeName: rule.fileType?.displayName ?? primaryUTI,
             fromApp: currentBundleID,
             fromAppName: currentApp?.name,
             toApp: expectedBundleID,
@@ -196,21 +212,27 @@ final class ProtectionEngine {
         retryCount: Int = 0
     ) throws {
         do {
-            // 获取文件扩展名，使用扩展名级别的设置（覆盖所有相关 UTI，包括动态 UTI）
-            let extensions = UTIManager.shared.getExtensions(forUTI: uti)
-            if let ext = extensions.first {
+            // 以规则记录的扩展名为起点（而非从 UTI 反推扩展名），覆盖所有当前相关 UTI
+            let ext = findRule(for: uti)?.fileType?.extensions.first
+            if let ext {
                 try lsManager.setDefaultApplicationForExtension(
                     expectedBundleID,
                     extension: ext,
                     primaryUTI: uti
                 )
             } else {
-                // 回退到仅设置主 UTI
                 try lsManager.setDefaultApplication(expectedBundleID, for: uti)
             }
 
-            // 验证是否成功
-            let verifiedBundleID = try lsManager.getDefaultApplication(for: uti)
+            // 验证：使用扩展名当前的主 UTI（不依赖存储的 UTI）
+            let verifyUTI: String
+            if let ext {
+                let currentUTIs = lsManager.findAllUTIs(forExtension: ext)
+                verifyUTI = currentUTIs.contains(uti) ? uti : (currentUTIs.first ?? uti)
+            } else {
+                verifyUTI = uti
+            }
+            let verifiedBundleID = try lsManager.getDefaultApplication(for: verifyUTI)
 
             if verifiedBundleID == expectedBundleID {
                 print("✅ 成功恢复 \(uti) 的文件关联: \(expectedBundleID)")

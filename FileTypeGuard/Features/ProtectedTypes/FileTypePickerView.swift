@@ -211,7 +211,7 @@ struct FileTypePickerView: View {
     // MARK: - Category Tabs (File Types)
 
     private var categoryTabs: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        ScrollView(.horizontal, showsIndicators: true) {
             HStack(spacing: 8) {
                 ForEach(CommonFileTypes.Category.allCases) { category in
                     Button {
@@ -241,7 +241,7 @@ struct FileTypePickerView: View {
     // MARK: - Scheme Category Tabs
 
     private var schemeCategoryTabs: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        ScrollView(.horizontal, showsIndicators: true) {
             HStack(spacing: 8) {
                 ForEach(CommonURLSchemes.Category.allCases) { category in
                     Button {
