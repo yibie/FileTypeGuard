@@ -1,17 +1,149 @@
 name: Release
+
 on:
   push:
     tags: ['v*.*.*']
 
+env:
+  APP_NAME: FileTypeGuard
+  BUNDLE_ID: com.filetypeguard.mac
+
 jobs:
   release:
-    uses: yibie/cask-releaser/.github/workflows/release.yml@main
-    with:
-      config-path: cask-releaser.yml
-    secrets:
-      APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
-      APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
-      APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
-      APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
-      APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
-      GH_PAT: ${{ secrets.GH_PAT }}
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Install Apple certificate
+        env:
+          APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+        run: |
+          CERT_PATH=$RUNNER_TEMP/certificate.p12
+          echo "$APPLE_CERT_BASE64" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p "" $RUNNER_TEMP/build.keychain
+          security default-keychain -s $RUNNER_TEMP/build.keychain
+          security unlock-keychain -p "" $RUNNER_TEMP/build.keychain
+          security set-keychain-settings -lut 21600 $RUNNER_TEMP/build.keychain
+          security import "$CERT_PATH" -k $RUNNER_TEMP/build.keychain -P "$APPLE_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" $RUNNER_TEMP/build.keychain
+
+      - name: Setup notarytool credentials
+        env:
+          APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+        run: |
+          NOTARY_DIR=$RUNNER_TEMP/notary
+          mkdir -p "$NOTARY_DIR"
+          echo "$APPLE_NOTARY_KEY_BASE64" | base64 --decode > "$NOTARY_DIR/AuthKey_$APPLE_NOTARY_KEY_ID.p8"
+          xcrun notarytool store-credentials "notarytool" \
+            --key "$NOTARY_DIR/AuthKey_$APPLE_NOTARY_KEY_ID.p8" \
+            --key-id "$APPLE_NOTARY_KEY_ID" \
+            --issuer "$APPLE_NOTARY_ISSUER_ID" \
+            --force
+
+      - name: Build
+        run: |
+          xcodebuild \
+            -project "${{ env.APP_NAME }}.xcodeproj" \
+            -scheme "${{ env.APP_NAME }}" \
+            -configuration Release \
+            -derivedDataPath "build/DerivedData" \
+            -archivePath "build/${{ env.APP_NAME }}.xcarchive" \
+            archive \
+            ENABLE_HARDENED_RUNTIME=YES
+
+      - name: Sign and Package
+        run: |
+          APP_PATH="build/${{ env.APP_NAME }}.xcarchive/Products/Applications/${{ env.APP_NAME }}.app"
+          ZIP_PATH="build/${{ env.APP_NAME }}-${{ steps.get_version.outputs.VERSION }}.zip"
+          
+          # Sign
+          codesign --force --deep --sign "Developer ID Application" \
+            --options runtime \
+            "$APP_PATH"
+          
+          # Package
+          ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
+          echo "ZIP_PATH=$ZIP_PATH" >> $GITHUB_ENV
+
+      - name: Notarize
+        run: |
+          APP_PATH="build/${{ env.APP_NAME }}.xcarchive/Products/Applications/${{ env.APP_NAME }}.app"
+          ZIP_PATH="${{ env.ZIP_PATH }}"
+          
+          # Submit for notarization
+          xcrun notarytool submit "$ZIP_PATH" \
+            --keychain-profile "notarytool" \
+            --wait \
+            --timeout 600
+          
+          # Staple
+          xcrun stapler staple "$APP_PATH"
+          
+          # Repackage after stapling
+          rm "$ZIP_PATH"
+          ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
+
+      - name: Compute SHA256
+        id: sha
+        run: |
+          SHA256=$(shasum -a 256 "${{ env.ZIP_PATH }}" | awk '{print $1}')
+          echo "SHA256=$SHA256" >> $GITHUB_OUTPUT
+          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ${{ env.ZIP_PATH }}
+          body: |
+            ## ${{ env.APP_NAME }} ${{ steps.get_version.outputs.VERSION }}
+
+            ### Install via Homebrew
+            ```bash
+            brew tap yibie/tap
+            brew install --cask filetypeguard
+            ```
+
+            ### SHA256
+            ```
+            ${{ steps.sha.outputs.SHA256 }}
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Cask Formula
+        run: |
+          cat > filetypeguard.rb <<EOF
+          cask "filetypeguard" do
+            version "${{ steps.get_version.outputs.VERSION }}"
+            sha256 "${{ steps.sha.outputs.SHA256 }}"
+
+            url "https://github.com/${{ github.repository }}/releases/download/v#{version}/${{ env.APP_NAME }}-#{version}.zip"
+            name "${{ env.APP_NAME }}"
+            desc "Locks file type associations and automatically restores them when changed"
+            homepage "https://github.com/${{ github.repository }}"
+
+            app "${{ env.APP_NAME }}.app"
+
+            zap trash: [
+              "~/Library/Application Support/${{ env.APP_NAME }}",
+              "~/Library/Preferences/${{ env.BUNDLE_ID }}.plist",
+              "~/Library/Caches/${{ env.BUNDLE_ID }}",
+            ]
+          end
+          EOF
+
+      - name: Commit Updated Cask
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add filetypeguard.rb
+          git commit -m "chore: update cask for v${{ steps.get_version.outputs.VERSION }}" || true
+          git push origin HEAD:${{ github.ref_name }} || true
