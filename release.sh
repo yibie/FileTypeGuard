@@ -131,7 +131,23 @@ TAG="v$VERSION"
 
 # Check if tag already exists
 if gh release view "$TAG" --repo "$GITHUB_REPO" &>/dev/null; then
-  warn "Release $TAG already exists, uploading asset..."
+  warn "Release $TAG already exists, updating notes and uploading asset..."
+  gh release edit "$TAG" --repo "$GITHUB_REPO" \
+    --title "$APP_NAME $VERSION" \
+    --notes "## $APP_NAME $VERSION
+
+### Changes
+- Add URL scheme / protocol handler protection
+- Prevent apps from hijacking default handlers for web links and other protocols
+
+### Install via Homebrew
+\`\`\`bash
+brew tap yibie/tap
+brew install --cask filetypeguard
+\`\`\`
+
+### Manual Install
+Download \`$ZIP_NAME\` below and move \`$APP_NAME.app\` to /Applications."
   gh release upload "$TAG" "$ZIP_PATH" --repo "$GITHUB_REPO" --clobber
 else
   gh release create "$TAG" "$ZIP_PATH" \
