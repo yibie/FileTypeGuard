@@ -1,4 +1,4 @@
-import SwiftUI
+    import SwiftUI
 
 struct ContentView: View {
     var body: some View {
@@ -15,7 +15,7 @@ struct ContentView: View {
                 .font(.subheadline)
                 .foregroundColor(.secondary)
 
-            Text("v0.1.0-dev")
+            Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")")
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .padding(.top, 10)
