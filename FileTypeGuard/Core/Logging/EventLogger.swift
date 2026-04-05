@@ -16,6 +16,10 @@ final class EventLogger {
     private let queue = DispatchQueue(label: "com.filetypeprotector.logger", qos: .utility)
     private var memoryCache: [LogEntry] = []
     private let maxCacheSize = 1000
+    private var recentEventTimestamps: [String: [Date]] = [:]
+    private var lastStormReportAt: [String: Date] = [:]
+    private let diagnosticWindow: TimeInterval = 10
+    private let stormThreshold = 8
 
     /// 日志目录
     private var logDirectoryURL: URL {
@@ -48,6 +52,8 @@ final class EventLogger {
             if self.memoryCache.count > self.maxCacheSize {
                 self.memoryCache.removeFirst(self.memoryCache.count - self.maxCacheSize)
             }
+
+            self.recordStormDiagnostic(for: entry)
 
             // 异步写入磁盘
             self.writeToFile(entry)
@@ -142,6 +148,27 @@ final class EventLogger {
         } catch {
             print("❌ 创建日志目录失败: \(error)")
         }
+    }
+
+    private func recordStormDiagnostic(for entry: LogEntry) {
+        let now = entry.timestamp
+        let key = "\(entry.fileType)|\(entry.eventType.rawValue)"
+        let cutoff = now.addingTimeInterval(-diagnosticWindow)
+
+        var timestamps = recentEventTimestamps[key, default: []]
+        timestamps.append(now)
+        timestamps.removeAll { $0 < cutoff }
+        recentEventTimestamps[key] = timestamps
+
+        guard timestamps.count >= stormThreshold else { return }
+
+        if let lastReport = lastStormReportAt[key], now.timeIntervalSince(lastReport) < diagnosticWindow {
+            return
+        }
+
+        lastStormReportAt[key] = now
+
+        print("⚠️  Log storm suspected: fileType=\(entry.fileType) event=\(entry.eventType.rawValue) count=\(timestamps.count) window=\(Int(diagnosticWindow))s logFile=\(currentLogFileURL.lastPathComponent)")
     }
 
     /// 写入日志到文件

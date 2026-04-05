@@ -95,9 +95,28 @@ step "Step 3/6: Package into zip"
 
 ZIP_NAME="${APP_NAME}-${VERSION}.zip"
 ZIP_PATH="$BUILD_DIR/$ZIP_NAME"
+DMG_NAME="${APP_NAME}-${VERSION}.dmg"
+DMG_PATH="$BUILD_DIR/$DMG_NAME"
 
 ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
 info "Packaged: $ZIP_PATH ($(du -sh "$ZIP_PATH" | cut -f1))"
+
+rm -f "$DMG_PATH"
+stage_dir="$BUILD_DIR/dmg-stage"
+rm -rf "$stage_dir"
+mkdir -p "$stage_dir"
+cp -R "$APP_PATH" "$stage_dir/"
+ln -s /Applications "$stage_dir/Applications"
+
+hdiutil create \
+  -volname "$APP_NAME" \
+  -srcfolder "$stage_dir" \
+  -ov \
+  -format UDZO \
+  "$DMG_PATH" >/dev/null
+
+rm -rf "$stage_dir"
+info "Packaged: $DMG_PATH ($(du -sh "$DMG_PATH" | cut -f1))"
 
 # ─── Step 4: Notarize ─────────────────────────────────────────────────────────
 step "Step 4/6: Submit for notarization (this takes ~1-3 min)"
@@ -147,10 +166,10 @@ brew install --cask filetypeguard
 \`\`\`
 
 ### Manual Install
-Download \`$ZIP_NAME\` below and move \`$APP_NAME.app\` to /Applications."
-  gh release upload "$TAG" "$ZIP_PATH" --repo "$GITHUB_REPO" --clobber
+Download \`$DMG_NAME\` or \`$ZIP_NAME\` below and move \`$APP_NAME.app\` to /Applications."
+  gh release upload "$TAG" "$ZIP_PATH" "$DMG_PATH" --repo "$GITHUB_REPO" --clobber
 else
-  gh release create "$TAG" "$ZIP_PATH" \
+  gh release create "$TAG" "$ZIP_PATH" "$DMG_PATH" \
     --repo "$GITHUB_REPO" \
     --title "$APP_NAME $VERSION" \
     --notes "## $APP_NAME $VERSION
@@ -165,7 +184,7 @@ brew install --cask filetypeguard
 \`\`\`
 
 ### Manual Install
-Download \`$ZIP_NAME\` below and move \`$APP_NAME.app\` to /Applications."
+Download \`$DMG_NAME\` or \`$ZIP_NAME\` below and move \`$APP_NAME.app\` to /Applications."
 fi
 
 DOWNLOAD_URL="https://github.com/$GITHUB_REPO/releases/download/$TAG/$ZIP_NAME"

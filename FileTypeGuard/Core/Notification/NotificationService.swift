@@ -2,6 +2,7 @@ import Foundation
 import UserNotifications
 
 /// 系统通知服务
+@MainActor
 final class NotificationService {
 
     // MARK: - Singleton
@@ -86,9 +87,9 @@ final class NotificationService {
             return
         }
 
-        Task {
+        Task { @MainActor in
             // 检查权限
-            let status = await checkAuthorizationStatus()
+            let status = await center.notificationSettings().authorizationStatus
             guard status == .authorized else {
                 print("⚠️  通知权限未授予，跳过发送")
                 return
