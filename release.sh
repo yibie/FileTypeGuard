@@ -101,23 +101,6 @@ DMG_PATH="$BUILD_DIR/$DMG_NAME"
 ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
 info "Packaged: $ZIP_PATH ($(du -sh "$ZIP_PATH" | cut -f1))"
 
-rm -f "$DMG_PATH"
-stage_dir="$BUILD_DIR/dmg-stage"
-rm -rf "$stage_dir"
-mkdir -p "$stage_dir"
-cp -R "$APP_PATH" "$stage_dir/"
-ln -s /Applications "$stage_dir/Applications"
-
-hdiutil create \
-  -volname "$APP_NAME" \
-  -srcfolder "$stage_dir" \
-  -ov \
-  -format UDZO \
-  "$DMG_PATH" >/dev/null
-
-rm -rf "$stage_dir"
-info "Packaged: $DMG_PATH ($(du -sh "$DMG_PATH" | cut -f1))"
-
 # ─── Step 4: Notarize ─────────────────────────────────────────────────────────
 step "Step 4/6: Submit for notarization (this takes ~1-3 min)"
 
@@ -136,6 +119,24 @@ info "Staple applied"
 rm "$ZIP_PATH"
 ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
 info "Repackaged after staple"
+
+# Package the DMG after stapling so it contains the notarization ticket.
+rm -f "$DMG_PATH"
+stage_dir="$BUILD_DIR/dmg-stage"
+rm -rf "$stage_dir"
+mkdir -p "$stage_dir"
+cp -R "$APP_PATH" "$stage_dir/"
+ln -s /Applications "$stage_dir/Applications"
+
+hdiutil create \
+  -volname "$APP_NAME" \
+  -srcfolder "$stage_dir" \
+  -ov \
+  -format UDZO \
+  "$DMG_PATH" >/dev/null
+
+rm -rf "$stage_dir"
+info "Packaged: $DMG_PATH ($(du -sh "$DMG_PATH" | cut -f1))"
 
 # ─── Step 5: Compute SHA256 ───────────────────────────────────────────────────
 step "Step 5/6: Compute SHA256"
