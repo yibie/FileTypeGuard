@@ -129,7 +129,7 @@ final class DataModelsTests: XCTestCase {
         let rule = ProtectionRule(fileType: fileType, expectedApplication: app)
 
         // Then: 属性正确
-        XCTAssertEqual(rule.fileType.uti, "com.adobe.pdf")
+        XCTAssertEqual(rule.fileType?.uti, "com.adobe.pdf")
         XCTAssertEqual(rule.expectedApplication.bundleID, "com.apple.Preview")
         XCTAssertTrue(rule.isEnabled)
         print("✅ ProtectionRule 创建成功: \(rule)")
@@ -162,11 +162,32 @@ final class DataModelsTests: XCTestCase {
         let decoded = try decoder.decode(ProtectionRule.self, from: data)
 
         XCTAssertEqual(decoded.id, rule.id)
-        XCTAssertEqual(decoded.fileType.uti, rule.fileType.uti)
+        XCTAssertEqual(decoded.fileType?.uti, rule.fileType?.uti)
         print("✅ ProtectionRule JSON 序列化成功")
     }
 
     // MARK: - ConfigurationManager Tests
+
+    func testUserPreferences_DecodesLegacyConfiguration() throws {
+        let data = Data("""
+        {
+          "monitoringEnabled": false,
+          "checkInterval": 10,
+          "recoveryStrategy": "delayed",
+          "showNotifications": false,
+          "notificationSound": false,
+          "autoRecoveryEnabled": false,
+          "logRetentionDays": 14,
+          "startAtLogin": true
+        }
+        """.utf8)
+
+        let preferences = try JSONDecoder().decode(ConfigurationManager.UserPreferences.self, from: data)
+
+        XCTAssertFalse(preferences.hideDockIcon)
+        XCTAssertFalse(preferences.monitoringEnabled)
+        XCTAssertEqual(preferences.recoveryStrategy, .delayed)
+    }
 
     func testConfigurationManager_LoadDefault() {
         // Given: ConfigurationManager
@@ -192,7 +213,7 @@ final class DataModelsTests: XCTestCase {
 
         // Then: 重新加载应该包含该规则
         let config = manager.loadConfiguration()
-        XCTAssertTrue(config.protectedTypes.contains { $0.fileType.uti == rule.fileType.uti })
+        XCTAssertTrue(config.protectedTypes.contains { $0.fileType?.uti == rule.fileType?.uti })
         print("✅ 保存并重新加载成功")
 
         // 清理：移除测试规则

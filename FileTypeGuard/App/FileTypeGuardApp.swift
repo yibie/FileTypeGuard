@@ -5,11 +5,35 @@ struct FileTypeGuardApp: App {
     @StateObject private var appCoordinator = AppCoordinator()
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: "main") {
             MainView()
                 .environmentObject(appCoordinator)
         }
         .defaultSize(width: 900, height: 600)
+
+        // 隐藏 Dock 图标时，通过菜单栏图标访问应用
+        MenuBarExtra(String(localized: "open_filetypeguard"), systemImage: "shield.checkered", isInserted: $appCoordinator.hideDockIcon) {
+            MenuBarMenuView()
+        }
+    }
+}
+
+/// 菜单栏菜单
+/// 仅在「隐藏 Dock 图标」开启时显示
+struct MenuBarMenuView: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button(String(localized: "open_filetypeguard")) {
+            openWindow(id: "main")
+            NSApp.activate(ignoringOtherApps: true)
+        }
+
+        Divider()
+
+        Button(String(localized: "quit_filetypeguard")) {
+            NSApp.terminate(nil)
+        }
     }
 }
 
@@ -27,6 +51,7 @@ final class AppCoordinator: ObservableObject {
 
     @Published var isMonitoring = false
     @Published var lastCheckTime: Date?
+    @Published var hideDockIcon = false
 
     // MARK: - Initialization
 
@@ -51,9 +76,21 @@ final class AppCoordinator: ObservableObject {
         if preferences.monitoringEnabled {
             startMonitoring()
         }
+
+        // 应用 Dock 图标显示策略
+        setHideDockIcon(preferences.hideDockIcon)
     }
 
     // MARK: - Public Methods
+
+    /// 设置是否隐藏 Dock 图标（仅菜单栏模式）
+    func setHideDockIcon(_ hide: Bool) {
+        hideDockIcon = hide
+        NSApp.setActivationPolicy(hide ? .accessory : .regular)
+        if !hide {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
 
     /// 启动监控
     func startMonitoring() {

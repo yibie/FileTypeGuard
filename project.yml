@@ -15,7 +15,7 @@ settings:
     PRODUCT_BUNDLE_IDENTIFIER: com.filetypeguard.mac
     INFOPLIST_FILE: FileTypeGuard/App/Info.plist
     CODE_SIGN_ENTITLEMENTS: FileTypeGuard/App/FileTypeGuard.entitlements
-    MARKETING_VERSION: "1.2.3"
+    MARKETING_VERSION: "1.2.4"
     CURRENT_PROJECT_VERSION: "1"
 targets:
   FileTypeGuard:

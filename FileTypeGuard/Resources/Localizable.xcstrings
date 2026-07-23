@@ -2925,6 +2925,34 @@
         }
       }
     },
+    "hide_dock_icon" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hide Dock Icon (Menu Bar Only)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dock アイコンを隠す(メニューバーのみ)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐藏 Dock 图标(仅菜单栏)"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隱藏 Dock 圖示(僅選單列)"
+          }
+        }
+      }
+    },
     "identifying_file_type" : {
       "localizations" : {
         "en" : {
@@ -3408,6 +3436,34 @@
         }
       }
     },
+    "open_filetypeguard" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open FileTypeGuard"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FileTypeGuard を開く"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开 FileTypeGuard"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟 FileTypeGuard"
+          }
+        }
+      }
+    },
     "other_apps" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3518,6 +3574,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "保護類型"
+          }
+        }
+      }
+    },
+    "quit_filetypeguard" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quit FileTypeGuard"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FileTypeGuard を終了"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "退出 FileTypeGuard"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "結束 FileTypeGuard"
           }
         }
       }

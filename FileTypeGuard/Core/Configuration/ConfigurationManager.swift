@@ -57,6 +57,22 @@ final class ConfigurationManager {
         var autoRecoveryEnabled: Bool = true
         var logRetentionDays: Int = 30
         var startAtLogin: Bool = false
+        var hideDockIcon: Bool = false
+
+        init() {}
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            monitoringEnabled = try container.decodeIfPresent(Bool.self, forKey: .monitoringEnabled) ?? monitoringEnabled
+            checkInterval = try container.decodeIfPresent(TimeInterval.self, forKey: .checkInterval) ?? checkInterval
+            recoveryStrategy = try container.decodeIfPresent(RecoveryStrategy.self, forKey: .recoveryStrategy) ?? recoveryStrategy
+            showNotifications = try container.decodeIfPresent(Bool.self, forKey: .showNotifications) ?? showNotifications
+            notificationSound = try container.decodeIfPresent(Bool.self, forKey: .notificationSound) ?? notificationSound
+            autoRecoveryEnabled = try container.decodeIfPresent(Bool.self, forKey: .autoRecoveryEnabled) ?? autoRecoveryEnabled
+            logRetentionDays = try container.decodeIfPresent(Int.self, forKey: .logRetentionDays) ?? logRetentionDays
+            startAtLogin = try container.decodeIfPresent(Bool.self, forKey: .startAtLogin) ?? startAtLogin
+            hideDockIcon = try container.decodeIfPresent(Bool.self, forKey: .hideDockIcon) ?? hideDockIcon
+        }
     }
 
     // MARK: - Error Types
